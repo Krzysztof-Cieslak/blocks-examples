@@ -42,12 +42,14 @@ export default (props: FileBlockProps) => {
         template="react"
         customSetup={{
           dependencies: {
-            "@mdx-js/runtime": "^2.0.0-next.9",
+            "@mdx-js/mdx": "^2.0.0",
+            "@mdx-js/react": "^2.0.0",
             "@primer/components": "^31.1.0",
             "react-syntax-highlighter": "^15.4.4",
             "styled-components": "^5.3.3",
             "@githubnext/utils": "^0.13.1",
             "lz-string": "^1.4.4",
+            "unist-util-visit-parents": "^5.1.0",
           },
           files: files,
         }}
@@ -63,7 +65,9 @@ export default (props: FileBlockProps) => {
 };
 
 const getAppCode = (props: FileBlockProps) =>
-  `import MDX from "@mdx-js/runtime";
+  `import * as runtime from 'react/jsx-runtime.js'
+import * as provider from '@mdx-js/react'
+import {evaluateSync} from '@mdx-js/mdx'
 import { Avatar, Box, StateLabel } from "@primer/components";
 import "styled-components";
 import SyntaxHighlighter from "react-syntax-highlighter";
@@ -120,15 +124,15 @@ export default function App(props) {
     getRepoInfo();
   }, []);
 
+  const {default: Content} = evaluateSync(sanitizedContent, {...provider, ...runtime})
+
   return (
     <MarkdownContext.Provider value={repoInfo} key={content}>
       <div className="w-full h-full flex items-stretch overflow-hidden">
         <div className="flex-1 markdown-body p-6 pb-40 overflow-y-auto whitespace-pre-wrap">
           <div className="max-w-[60em] mx-auto">
             <ErrorBoundary key={content}>
-              <MDX components={components} scope={repoInfo}>
-                {sanitizedContent}
-              </MDX>
+              <Content components={components} scope={repoInfo} />
             </ErrorBoundary>
           </div>
         </div>
