@@ -49,6 +49,7 @@ export default (props: FileBlockProps) => {
             "styled-components": "^5.3.3",
             "@githubnext/utils": "^0.13.1",
             "lz-string": "^1.4.4",
+            "@code-hike/mdx": "next",
             "unist-util-visit-parents": "^5.1.0",
           },
           files: files,
@@ -67,18 +68,23 @@ export default (props: FileBlockProps) => {
 const getAppCode = (props: FileBlockProps) =>
   `import * as runtime from 'react/jsx-runtime.js'
 import * as provider from '@mdx-js/react'
-import {evaluateSync} from '@mdx-js/mdx'
+import {compile, run} from '@mdx-js/mdx'
 import { Avatar, Box, StateLabel } from "@primer/components";
 import "styled-components";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import LZString from "lz-string"
+import "@code-hike/mdx/dist/index.css";
+import { remarkCodeHike } from "@code-hike/mdx";
+import * as theme from "shiki/themes/github-dark.json";
+import * as chComponents from "@code-hike/mdx/dist/components.cjs.js";
 
 import {
   ReactNode,
   createContext,
   useContext,
   useEffect, useMemo, useState,
-  Component
+  Component,
+  Fragment
 } from "react";
 import "./styles.css";
 
@@ -95,6 +101,8 @@ export default function App(props) {
     releases: [],
     commits: [],
   });
+
+  const [mdxComponent, setMdxComponent] = useState(null);
 
   const sanitizedContent = useMemo(() => (
     content
@@ -124,7 +132,41 @@ export default function App(props) {
     getRepoInfo();
   }, []);
 
-  const {default: Content} = evaluateSync(sanitizedContent, {...provider, ...runtime})
+  const remarkPlugins = [[remarkCodeHike, { theme, lineNumbers: true }]];
+
+  const getContentComponent = async () => {
+    const options = {
+      providerImportSource: '@mdx-js/react',
+      remarkPlugins,
+      useDynamicImport: true,
+      outputFormat: "function-body"
+    };
+    const m = await compile(sanitizedContent, options);
+    const hackValue = m.value.replace(
+      "await import(\\"@code-hike/mdx/dist/components.cjs.js\\")",
+      "arguments[0].ch"
+    );
+    m.value = hackValue;
+    const r = await run(m, { ...options,...provider, ...runtime, ch: chComponents });
+    setMdxComponent(r);
+  };
+
+  useEffect(() => {
+    getContentComponent();
+  }, []);
+
+  let component;
+  if (mdxComponent) {
+    component = (
+      <mdxComponent.default
+        components={components}
+        scope={repoInfo}
+        remarkPlugins={remarkPlugins}
+      />
+    );
+  } else {
+    component = <Fragment />;
+  }
 
   return (
     <MarkdownContext.Provider value={repoInfo} key={content}>
@@ -132,7 +174,7 @@ export default function App(props) {
         <div className="flex-1 markdown-body p-6 pb-40 overflow-y-auto whitespace-pre-wrap">
           <div className="max-w-[60em] mx-auto">
             <ErrorBoundary key={content}>
-              <Content components={components} scope={repoInfo} />
+              {component}
             </ErrorBoundary>
           </div>
         </div>
